@@ -479,7 +479,6 @@ export function AuthProvider({
     return result.status === 'authenticated' ? result.user : null
   }, [fetchFullUserResult])
 
-  const fetchFullUserEvent = useEffectEvent(fetchFullUser)
   const fetchFullUserResultEvent = useEffectEvent(fetchFullUserResult)
 
   useEffect(() => {
@@ -515,7 +514,7 @@ export function AuthProvider({
 
   useEffect(() => {
     if (!user && autoLogin && !autoLogin.prefillOnly) {
-      void fetchFullUserEvent()
+      void fetchFullUserResultEvent()
     }
   }, [user, autoLogin])
 
