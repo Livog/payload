@@ -466,18 +466,35 @@ describe('Auth', () => {
       })
     })
 
-    test('should server-render the login view before client scripts load', async ({ browser }) => {
-      const loggedOutContext = await browser.newContext()
-      const loggedOutPage = await loggedOutContext.newPage()
+    test('should render the login view without client JavaScript', async ({ browser }) => {
+      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
 
-      await loggedOutPage.route('**/_next/static/**/*.js', (route) => route.abort())
-      await loggedOutPage.goto(formatAdminURL({ adminRoute, path: '/login', serverURL }))
+      try {
+        const loggedOutPage = await loggedOutContext.newPage()
 
-      await expect(loggedOutPage.locator('#field-email')).toBeVisible()
-      await expect(loggedOutPage.locator('#field-password')).toBeVisible()
-      await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
+        await loggedOutPage.goto(url.login)
 
-      await loggedOutContext.close()
+        await expect(loggedOutPage.locator('#field-email')).toBeVisible()
+        await expect(loggedOutPage.locator('#field-password')).toBeVisible()
+        await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
+      } finally {
+        await loggedOutContext.close()
+      }
+    })
+
+    test('should redirect logged-out requests for admin views to the login view', async ({
+      request,
+    }) => {
+      await expect
+        .poll(async () => {
+          const response = await request.get(url.admin, { maxRedirects: 0 })
+
+          return {
+            location: new URL(response.headers().location ?? '', serverURL).pathname,
+            status: response.status(),
+          }
+        })
+        .toEqual({ location: new URL(url.login).pathname, status: 307 })
     })
   })
 

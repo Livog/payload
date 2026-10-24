@@ -2,7 +2,7 @@
 import type { AuthenticatedUser, SanitizedPermissions } from 'payload'
 
 import { useModal } from '@faceless-ui/modal'
-import { formatAdminURL, stripTrailingSlash } from 'payload/shared'
+import { formatAdminURL } from 'payload/shared'
 import * as qs from 'qs-esm'
 import React, { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -14,7 +14,6 @@ import { stayLoggedInModalSlug } from '../../elements/StayLoggedIn/index.js'
 import { useEffectEvent } from '../../hooks/useEffectEvent.js'
 import { useTranslation } from '../../providers/Translation/index.js'
 import { requests } from '../../utilities/api.js'
-import { isPublicAdminRoute } from '../../utilities/isPublicAdminRoute.js'
 import { useConfig } from '../Config/index.js'
 import { usePathname, useRouter, useSearchParams } from '../RouterAdapter/index.js'
 import { useRouteTransition } from '../RouteTransition/index.js'
@@ -69,7 +68,7 @@ export function AuthProvider({
     admin: {
       autoLogin,
       autoRefresh,
-      routes: { inactivity: logoutInactivityRoute, login: loginRoute, logout: logoutRoute },
+      routes: { inactivity: logoutInactivityRoute, login: loginRoute },
       user: userSlug,
     },
     routes: { admin: adminRoute, api: apiRoute },
@@ -83,7 +82,6 @@ export function AuthProvider({
   const [tokenInMemory, setTokenInMemory] = useState<string>()
   const [authSession, setAuthSession] = useState<AuthSession>()
   const [permissions, setPermissions] = useState<SanitizedPermissions>(initialPermissions)
-  const [fetchedUserOnMount, setFetchedUserOnMount] = useState(false)
 
   const [authRequests] = useState(createAuthSessionRequests)
   const userRef = React.useRef<AuthenticatedUser | null>(initialUser)
@@ -404,7 +402,7 @@ export function AuthProvider({
         toast.error(`Refreshing permissions failed: ${e.message}`)
       }
     },
-    [apiRoute, i18n],
+    [apiRoute, i18n.language],
   )
 
   const fetchFullUserResult = React.useCallback(
@@ -480,12 +478,16 @@ export function AuthProvider({
 
   const fetchFullUserEvent = useEffectEvent(fetchFullUser)
 
-  useEffect(() => {
-    async function fetchUserOnMount() {
-      await fetchFullUserEvent()
-      setFetchedUserOnMount(true)
-    }
+  const fetchUserOnMount = useEffectEvent(async () => {
+    const fetchedUser = await fetchFullUser()
 
+    // /me can find a session the server render missed (csrf on cross-site links, refresh-only strategies)
+    if (fetchedUser && !initialUser) {
+      router.refresh()
+    }
+  })
+
+  useEffect(() => {
     void fetchUserOnMount()
   }, [])
 
@@ -530,18 +532,6 @@ export function AuthProvider({
       user,
     ],
   )
-
-  const isLogoutRoute =
-    stripTrailingSlash(pathname) === formatAdminURL({ adminRoute, path: logoutRoute })
-
-  // The server can miss a session that /me finds, so views that redirect or log out wait for it
-  if (
-    !user &&
-    !fetchedUserOnMount &&
-    (isLogoutRoute || !isPublicAdminRoute({ adminRoute, config, route: pathname }))
-  ) {
-    return null
-  }
 
   return <Context value={value}>{children}</Context>
 }

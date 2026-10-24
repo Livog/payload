@@ -1,4 +1,4 @@
-import type { ClientConfig, SanitizedConfig } from 'payload'
+import type { SanitizedConfig } from 'payload'
 
 import { getRouteWithoutAdmin } from './getRouteWithoutAdmin.js'
 
@@ -23,7 +23,7 @@ export const isPublicAdminRoute = ({
   route,
 }: {
   adminRoute: string
-  config: ClientConfig | SanitizedConfig
+  config: SanitizedConfig
   route: string
 }): boolean => {
   const routeWithoutAdmin = getRouteWithoutAdmin({ adminRoute, route })
