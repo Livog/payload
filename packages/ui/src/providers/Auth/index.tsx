@@ -4,7 +4,7 @@ import type { AuthenticatedUser, SanitizedPermissions } from 'payload'
 import { useModal } from '@faceless-ui/modal'
 import { formatAdminURL } from 'payload/shared'
 import * as qs from 'qs-esm'
-import React, { createContext, use, useCallback, useEffect, useState } from 'react'
+import React, { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { TabSessionReconciliationOptions } from './tabSessionSync/index.js'
@@ -25,6 +25,7 @@ import { useAuthSessionTimers } from './useAuthSessionTimers.js'
 export type { AuthContext, AuthSession, UserWithToken } from './types.js'
 
 const Context = createContext({} as AuthContext)
+const SkipRouteRefreshContext = createContext<() => void>(() => {})
 
 type Props = {
   children: React.ReactNode
@@ -82,10 +83,11 @@ export function AuthProvider({
   const [tokenInMemory, setTokenInMemory] = useState<string>()
   const [authSession, setAuthSession] = useState<AuthSession>()
   const [permissions, setPermissions] = useState<SanitizedPermissions>(initialPermissions)
-  const [fetchedUserOnMount, setFetchedUserOnMount] = useState(false)
+  const [sessionCheckStatus, setSessionCheckStatus] = useState<FetchFullUserResult['status']>()
 
   const [authRequests] = useState(createAuthSessionRequests)
   const userRef = React.useRef<AuthenticatedUser | null>(initialUser)
+  const isRouteRefreshSkippedRef = React.useRef(false)
 
   const isAuthenticated = Boolean(user)
 
@@ -403,7 +405,7 @@ export function AuthProvider({
         toast.error(`Refreshing permissions failed: ${e.message}`)
       }
     },
-    [apiRoute, i18n],
+    [apiRoute, i18n.language],
   )
 
   const fetchFullUserResult = React.useCallback(
@@ -477,20 +479,41 @@ export function AuthProvider({
     return result.status === 'authenticated' ? result.user : null
   }, [fetchFullUserResult])
 
-  const fetchFullUserEvent = useEffectEvent(fetchFullUser)
+  const fetchFullUserResultEvent = useEffectEvent(fetchFullUserResult)
 
   useEffect(() => {
-    async function fetchUserOnMount() {
-      await fetchFullUserEvent()
-      setFetchedUserOnMount(true)
-    }
+    let isCurrent = true
 
-    void fetchUserOnMount()
+    void fetchFullUserResultEvent().then(({ status }) => {
+      if (isCurrent) {
+        setSessionCheckStatus(status)
+      }
+    })
+
+    return () => {
+      isCurrent = false
+    }
   }, [])
+
+  const skipRouteRefresh = useCallback(() => {
+    isRouteRefreshSkippedRef.current = true
+  }, [])
+
+  const refreshIfServerMissedSession = useEffectEvent(() => {
+    if (!initialUser && !authRequests.isLoggingOut() && !isRouteRefreshSkippedRef.current) {
+      router.refresh()
+    }
+  })
+
+  useEffect(() => {
+    if (sessionCheckStatus && sessionCheckStatus !== 'unauthenticated') {
+      refreshIfServerMissedSession()
+    }
+  }, [sessionCheckStatus])
 
   useEffect(() => {
     if (!user && autoLogin && !autoLogin.prefillOnly) {
-      void fetchFullUserEvent()
+      void fetchFullUserResultEvent()
     }
   }, [user, autoLogin])
 
@@ -501,29 +524,43 @@ export function AuthProvider({
     [authRequests],
   )
 
-  if (!user && !fetchedUserOnMount) {
-    return null
-  }
+  const value = useMemo(
+    () => ({
+      authSession,
+      fetchFullUser,
+      isSessionChecked: sessionCheckStatus !== undefined,
+      logOut,
+      permissions,
+      refreshCookie: sessionTimers.scheduleRefresh,
+      refreshCookieAsync,
+      refreshPermissions,
+      setPermissions,
+      setUser,
+      token: tokenInMemory,
+      user,
+    }),
+    [
+      authSession,
+      fetchFullUser,
+      logOut,
+      permissions,
+      refreshCookieAsync,
+      refreshPermissions,
+      sessionCheckStatus,
+      sessionTimers.scheduleRefresh,
+      setUser,
+      tokenInMemory,
+      user,
+    ],
+  )
 
   return (
-    <Context
-      value={{
-        authSession,
-        fetchFullUser,
-        logOut,
-        permissions,
-        refreshCookie: sessionTimers.scheduleRefresh,
-        refreshCookieAsync,
-        refreshPermissions,
-        setPermissions,
-        setUser,
-        token: tokenInMemory,
-        user,
-      }}
-    >
-      {children}
+    <Context value={value}>
+      <SkipRouteRefreshContext value={skipRouteRefresh}>{children}</SkipRouteRefreshContext>
     </Context>
   )
 }
 
 export const useAuth = <T = AuthenticatedUser,>(): AuthContext<T> => use(Context) as AuthContext<T>
+
+export const useSkipRouteRefresh = (): (() => void) => use(SkipRouteRefreshContext)

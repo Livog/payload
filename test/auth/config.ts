@@ -37,6 +37,7 @@ export default buildConfigWithDefaults({
       components: {
         beforeDashboard: ['./BeforeDashboard.js#BeforeDashboard'],
         beforeLogin: ['./BeforeLogin.js#BeforeLogin'],
+        providers: ['./CustomProvider.js#CustomProvider'],
         views: {
           'create-first-user': {
             Component: './CreateFirstUser.js#CreateFirstUser',

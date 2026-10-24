@@ -19,7 +19,7 @@ import React from 'react'
 
 import { RenderServerComponent } from '../../elements/RenderServerComponent/index.js'
 // eslint-disable-next-line payload/no-imports-from-exports-dir -- Server component must reference exports/client bundle for proper client boundary in prod builds
-import { PageConfigProvider } from '../../exports/client/index.js'
+import { PageConfigProvider, RedirectWithoutSession } from '../../exports/client/index.js'
 import { DefaultTemplate } from '../../templates/Default/index.js'
 import { MinimalTemplate } from '../../templates/Minimal/index.js'
 import { getClientConfig } from '../../utilities/getClientConfig.js'
@@ -176,14 +176,23 @@ export const renderRoot = async ({
     !isPublicAdminRoute({ adminRoute, config: payload.config, route: currentRouteToCompare }) &&
     !isCustomAdminView({ adminRoute, config: payload.config, route: currentRouteToCompare })
   ) {
-    req.server.redirect(
-      handleAuthRedirect({
-        config: payload.config,
-        route: currentRouteToCompare,
-        searchParams,
-        user: req.user,
-      }),
-    )
+    const authRedirect = handleAuthRedirect({
+      config: payload.config,
+      route: currentRouteToCompare,
+      searchParams,
+      user: req.user,
+    })
+
+    if (
+      !req.user &&
+      payload.config.csrf.length > 0 &&
+      req.headers.get('sec-fetch-site') === 'cross-site' &&
+      cookies.has(`${payload.config.cookiePrefix}-token`)
+    ) {
+      return <RedirectWithoutSession to={authRedirect} />
+    }
+
+    req.server.redirect(authRedirect)
   }
 
   let collectionPreferences: CollectionPreferences = undefined

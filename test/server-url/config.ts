@@ -1,9 +1,11 @@
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
+import { defaultUserCollection } from 'payload'
 
 import { buildConfigWithDefaults } from '../buildConfigWithDefaults.js'
 import { devUser } from '../credentials.js'
+import { verifiedUsersSlug } from './shared.js'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -17,6 +19,14 @@ export default buildConfigWithDefaults({
         baseDir: path.resolve(dirname),
       },
     },
+    collections: [
+      defaultUserCollection,
+      {
+        slug: verifiedUsersSlug,
+        auth: { verify: true },
+        fields: [],
+      },
+    ],
     editor: lexicalEditor({}),
     serverURL: `http://localhost:${process.env.PORT || 3000}`,
     typescript: {

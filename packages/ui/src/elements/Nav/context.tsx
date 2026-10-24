@@ -3,6 +3,7 @@ import { useWindowInfo } from '@faceless-ui/window-info'
 import { PREFERENCE_KEYS } from 'payload/shared'
 import React, { useEffect, useRef } from 'react'
 
+import { useAuth } from '../../providers/Auth/index.js'
 import { usePreferences } from '../../providers/Preferences/index.js'
 import { usePathname } from '../../providers/RouterAdapter/index.js'
 
@@ -49,6 +50,7 @@ export const NavProvider: React.FC<{
   const pathname = usePathname()
 
   const { getPreference, setPreference } = usePreferences()
+  const isLoggedIn = Boolean(useAuth().user)
   const navRef = useRef(null)
   const previousBreakpoints = useRef({
     large: largeBreak,
@@ -75,7 +77,7 @@ export const NavProvider: React.FC<{
 
   // on load check the user's preference and set "initial" state
   useEffect(() => {
-    if (largeBreak === false) {
+    if (largeBreak === false && isLoggedIn) {
       const setNavFromPreferences = async () => {
         const preferredState = await getNavPreference(getPreference)
         setNavOpen(preferredState)
@@ -83,7 +85,7 @@ export const NavProvider: React.FC<{
 
       void setNavFromPreferences()
     }
-  }, [largeBreak, getPreference, setNavOpen])
+  }, [largeBreak, getPreference, isLoggedIn, setNavOpen])
 
   // on smaller screens where the nav is a modal
   // close the nav when the user navigates away

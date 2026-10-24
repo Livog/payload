@@ -10,7 +10,7 @@ import type { Config } from './payload-types.js'
 
 import { login } from '../__helpers/e2e/auth/login.js'
 import { logout } from '../__helpers/e2e/auth/logout.js'
-import { getRoutes, saveDocAndAssert } from '../__helpers/e2e/helpers.js'
+import { getRoutes, gotoAndWaitForForm, saveDocAndAssert } from '../__helpers/e2e/helpers.js'
 import { openNav } from '../__helpers/e2e/toggleNav.js'
 import { AdminUrlUtil } from '../__helpers/shared/adminUrlUtil.js'
 import { reInitializeDB } from '../__helpers/shared/clearAndSeed/reInitializeDB.js'
@@ -124,6 +124,44 @@ describe('Auth', () => {
       await expect
         .poll(() => page.url(), { timeout: POLL_TOPASS_TIMEOUT })
         .not.toContain('create-first-user')
+    })
+
+    test('should keep values typed before the session check finishes', async ({
+      page: freshPage,
+    }) => {
+      const {
+        admin: {
+          routes: { createFirstUser: createFirstUserRoute },
+        },
+      } = getRoutes({})
+      let releaseMe = () => {}
+      const meReleased = new Promise<void>((resolve) => {
+        releaseMe = resolve
+      })
+
+      await freshPage.route(`**/api/${slug}/me`, async (route) => {
+        await meReleased
+        await route.continue()
+      })
+      await gotoAndWaitForForm(
+        freshPage,
+        formatAdminURL({ adminRoute, path: createFirstUserRoute, serverURL }),
+      )
+      await freshPage.locator('#field-email').fill(devUser.email)
+      await freshPage.locator('#field-password').fill(devUser.password)
+
+      const meFinished = freshPage.waitForEvent('requestfinished', (request) =>
+        request.url().endsWith(`/api/${slug}/me`),
+      )
+
+      releaseMe()
+      await meFinished
+      await freshPage.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      )
+
+      await expect(freshPage.locator('#field-email')).toHaveValue(devUser.email)
+      await expect(freshPage.locator('#field-password')).toHaveValue(devUser.password)
     })
 
     test('richText field should should not be readOnly in create first user view', async () => {
@@ -455,6 +493,87 @@ describe('Auth', () => {
         // Previously, this would crash the page with a "Cannot read properties of null (reading 'fields')" error
         await expect(page.locator('#field-rel')).toBeVisible()
       })
+    })
+  })
+
+  describe('logged out', () => {
+    beforeAll(async () => {
+      await reInitializeDB({
+        deleteOnly: false,
+        serverURL,
+      })
+    })
+
+    test('should render the login view and custom providers without client JavaScript', async ({
+      browser,
+    }) => {
+      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
+
+      try {
+        const loggedOutPage = await loggedOutContext.newPage()
+
+        await loggedOutPage.goto(url.login)
+
+        await expect(loggedOutPage).toHaveURL(url.login)
+        await expect(loggedOutPage.locator('#field-email')).toBeVisible()
+        await expect(loggedOutPage.locator('#field-password')).toBeVisible()
+        await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
+        await expect(loggedOutPage.locator('meta[name="custom-provider"]')).toHaveAttribute(
+          'content',
+          'server-rendered',
+        )
+      } finally {
+        await loggedOutContext.close()
+      }
+    })
+
+    test('should keep saved nav preferences after logging in on a wide screen', async ({
+      context: wideContext,
+      page: widePage,
+    }) => {
+      const navPreferencesURL = formatAdminURL({
+        apiRoute: '/api',
+        path: '/payload-preferences/nav',
+        serverURL,
+      })
+
+      await widePage.setViewportSize({ height: 1080, width: 1920 })
+      await widePage.request.post(
+        formatAdminURL({ apiRoute: '/api', path: `/${slug}/login`, serverURL }),
+        { data: devUser },
+      )
+      await widePage.request.post(navPreferencesURL, {
+        data: { value: { groups: { Saved: { open: false } } } },
+      })
+      await wideContext.clearCookies()
+      await login({ page: widePage, serverURL })
+
+      const savedToggle = widePage.waitForResponse(
+        (response) =>
+          response.url() === navPreferencesURL && response.request().method() === 'POST',
+      )
+
+      await widePage.locator('.nav-group__toggle').first().click()
+      await savedToggle
+
+      await expect
+        .poll(async () => (await (await widePage.request.get(navPreferencesURL)).json()).value)
+        .toHaveProperty('groups.Saved', { open: false })
+    })
+
+    test('should redirect logged-out requests for admin views to the login view', async ({
+      request,
+    }) => {
+      await expect
+        .poll(async () => {
+          const response = await request.get(url.admin, { maxRedirects: 0 })
+
+          return {
+            location: new URL(response.headers().location ?? '', serverURL).pathname,
+            status: response.status(),
+          }
+        })
+        .toEqual({ location: new URL(url.login).pathname, status: 307 })
     })
   })
 

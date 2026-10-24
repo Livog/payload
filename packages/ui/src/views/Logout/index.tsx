@@ -1,10 +1,10 @@
 import type { AdminViewServerProps } from 'payload'
 
-import { getSafeRedirect } from 'payload/shared'
 import React from 'react'
 
 // eslint-disable-next-line payload/no-imports-from-exports-dir -- Server component must reference exports/client bundle for proper client boundary in prod builds
 import { LogoutClient } from '../../exports/client/index.js'
+import { getSafeAdminRedirect } from '../../utilities/getSafeAdminRedirect.js'
 import './index.css'
 
 const baseClass = 'logout'
@@ -19,7 +19,7 @@ export const LogoutView: React.FC<
     req: {
       payload: {
         config: {
-          routes: { admin: adminRoute },
+          routes: { admin: adminRoute, api: apiRoute },
         },
       },
       user,
@@ -31,7 +31,7 @@ export const LogoutView: React.FC<
   // to where they were headed instead of rendering the logout overlay indefinitely.
   if (inactivity && user) {
     req.server.redirect(
-      getSafeRedirect({ fallbackTo: adminRoute, redirectTo: searchParams.redirect }),
+      getSafeAdminRedirect({ adminRoute, apiRoute, redirectTo: searchParams.redirect }),
     )
   }
 

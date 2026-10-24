@@ -85,6 +85,18 @@ export const CreateFirstUserClient: React.FC<{
     }
   }, [])
 
+  const initialFormState = React.useMemo(
+    () => ({
+      ...initialState,
+      'confirm-password': {
+        ...initialState['confirm-password'],
+        valid: initialState['confirm-password']['valid'] || false,
+        value: initialState['confirm-password']['value'] || '',
+      },
+    }),
+    [initialState],
+  )
+
   return (
     <Form
       action={formatAdminURL({
@@ -92,14 +104,7 @@ export const CreateFirstUserClient: React.FC<{
         path: `/${userSlug}/first-register`,
       })}
       className={baseClass}
-      initialState={{
-        ...initialState,
-        'confirm-password': {
-          ...initialState['confirm-password'],
-          valid: initialState['confirm-password']['valid'] || false,
-          value: initialState['confirm-password']['value'] || '',
-        },
-      }}
+      initialState={initialFormState}
       method="POST"
       onChange={[onChange]}
       onSuccess={handleFirstRegister}

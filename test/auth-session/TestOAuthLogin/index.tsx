@@ -9,6 +9,8 @@ import React from 'react'
 import { AUTH_SESSION_TEST_ROUTES, authSessionLoginButtonLabel } from '../shared.js'
 import './index.css'
 
+const subscribeToNothing = () => () => {}
+
 export const TestOAuthLogin: PayloadClientReactComponent<
   SanitizedConfig['admin']['components']['beforeLogin'][0]
 > = () => {
@@ -20,6 +22,11 @@ export const TestOAuthLogin: PayloadClientReactComponent<
   const searchParams = useSearchParams()
   const [error, setError] = React.useState<string>()
   const [isLoading, setIsLoading] = React.useState(false)
+  const isHydrated = React.useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  )
 
   const logIn = async () => {
     setError(undefined)
@@ -49,7 +56,7 @@ export const TestOAuthLogin: PayloadClientReactComponent<
 
   return (
     <div className="test-oauth-login">
-      <Button loading={isLoading} onClick={logIn}>
+      <Button disabled={!isHydrated} loading={isLoading} onClick={logIn}>
         {authSessionLoginButtonLabel}
       </Button>
       {error ? <p role="alert">{error}</p> : null}
