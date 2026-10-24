@@ -540,7 +540,9 @@ describe('Auth', () => {
       })
     })
 
-    test('should render the login view without client JavaScript', async ({ browser }) => {
+    test('should render the login view and custom providers without client JavaScript', async ({
+      browser,
+    }) => {
       const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
 
       try {
@@ -548,22 +550,10 @@ describe('Auth', () => {
 
         await loggedOutPage.goto(url.login)
 
+        await expect(loggedOutPage).toHaveURL(url.login)
         await expect(loggedOutPage.locator('#field-email')).toBeVisible()
         await expect(loggedOutPage.locator('#field-password')).toBeVisible()
         await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
-      } finally {
-        await loggedOutContext.close()
-      }
-    })
-
-    test('should server-render custom providers on the login view', async ({ browser }) => {
-      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
-
-      try {
-        const loggedOutPage = await loggedOutContext.newPage()
-
-        await loggedOutPage.goto(url.login)
-
         await expect(loggedOutPage.locator('meta[name="custom-provider"]')).toHaveAttribute(
           'content',
           'server-rendered',
