@@ -458,6 +458,29 @@ describe('Auth', () => {
     })
   })
 
+  describe('logged out', () => {
+    beforeAll(async () => {
+      await reInitializeDB({
+        deleteOnly: false,
+        serverURL,
+      })
+    })
+
+    test('should server-render the login view before client scripts load', async ({ browser }) => {
+      const loggedOutContext = await browser.newContext()
+      const loggedOutPage = await loggedOutContext.newPage()
+
+      await loggedOutPage.route('**/_next/static/**/*.js', (route) => route.abort())
+      await loggedOutPage.goto(formatAdminURL({ adminRoute, path: '/login', serverURL }))
+
+      await expect(loggedOutPage.locator('#field-email')).toBeVisible()
+      await expect(loggedOutPage.locator('#field-password')).toBeVisible()
+      await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
+
+      await loggedOutContext.close()
+    })
+  })
+
   describe('server functions', () => {
     const serverFunctionsPath = '/server-functions'
 

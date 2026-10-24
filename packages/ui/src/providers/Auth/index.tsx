@@ -2,9 +2,9 @@
 import type { AuthenticatedUser, SanitizedPermissions } from 'payload'
 
 import { useModal } from '@faceless-ui/modal'
-import { formatAdminURL } from 'payload/shared'
+import { formatAdminURL, stripTrailingSlash } from 'payload/shared'
 import * as qs from 'qs-esm'
-import React, { createContext, use, useCallback, useEffect, useState } from 'react'
+import React, { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { TabSessionReconciliationOptions } from './tabSessionSync/index.js'
@@ -14,6 +14,7 @@ import { stayLoggedInModalSlug } from '../../elements/StayLoggedIn/index.js'
 import { useEffectEvent } from '../../hooks/useEffectEvent.js'
 import { useTranslation } from '../../providers/Translation/index.js'
 import { requests } from '../../utilities/api.js'
+import { isPublicAdminRoute } from '../../utilities/isPublicAdminRoute.js'
 import { useConfig } from '../Config/index.js'
 import { usePathname, useRouter, useSearchParams } from '../RouterAdapter/index.js'
 import { useRouteTransition } from '../RouteTransition/index.js'
@@ -68,7 +69,7 @@ export function AuthProvider({
     admin: {
       autoLogin,
       autoRefresh,
-      routes: { inactivity: logoutInactivityRoute, login: loginRoute },
+      routes: { inactivity: logoutInactivityRoute, login: loginRoute, logout: logoutRoute },
       user: userSlug,
     },
     routes: { admin: adminRoute, api: apiRoute },
@@ -501,29 +502,48 @@ export function AuthProvider({
     [authRequests],
   )
 
-  if (!user && !fetchedUserOnMount) {
+  // React Compiler skips this component, and a new value per render resets forms mounted before /me
+  const value = useMemo(
+    () => ({
+      authSession,
+      fetchFullUser,
+      logOut,
+      permissions,
+      refreshCookie: sessionTimers.scheduleRefresh,
+      refreshCookieAsync,
+      refreshPermissions,
+      setPermissions,
+      setUser,
+      token: tokenInMemory,
+      user,
+    }),
+    [
+      authSession,
+      fetchFullUser,
+      logOut,
+      permissions,
+      refreshCookieAsync,
+      refreshPermissions,
+      sessionTimers.scheduleRefresh,
+      setUser,
+      tokenInMemory,
+      user,
+    ],
+  )
+
+  const isLogoutRoute =
+    stripTrailingSlash(pathname) === formatAdminURL({ adminRoute, path: logoutRoute })
+
+  // The server can miss a session that /me finds, so views that redirect or log out wait for it
+  if (
+    !user &&
+    !fetchedUserOnMount &&
+    (isLogoutRoute || !isPublicAdminRoute({ adminRoute, config, route: pathname }))
+  ) {
     return null
   }
 
-  return (
-    <Context
-      value={{
-        authSession,
-        fetchFullUser,
-        logOut,
-        permissions,
-        refreshCookie: sessionTimers.scheduleRefresh,
-        refreshCookieAsync,
-        refreshPermissions,
-        setPermissions,
-        setUser,
-        token: tokenInMemory,
-        user,
-      }}
-    >
-      {children}
-    </Context>
-  )
+  return <Context value={value}>{children}</Context>
 }
 
 export const useAuth = <T = AuthenticatedUser,>(): AuthContext<T> => use(Context) as AuthContext<T>
