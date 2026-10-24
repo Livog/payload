@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from '@playwright/test'
+import type { BrowserContext, Page, Request } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import path from 'path'
@@ -28,6 +28,52 @@ process.env.NEXT_BASE_PATH = BASE_PATH
 let payload: PayloadTestSDK<Config>
 
 const { afterAll, beforeAll, beforeEach, describe } = test
+
+async function holdGermanDateFNSLocale(
+  page: Page,
+): Promise<{ isHeld: () => boolean; release: () => Promise<void> }> {
+  let releaseLocale = () => {}
+  const localeReleased = new Promise<void>((resolve) => {
+    releaseLocale = resolve
+  })
+  let heldRequest: null | Request = null
+
+  await page.route(
+    (url) => url.pathname.endsWith('.js'),
+    async (route) => {
+      const response = await route.fetch()
+      const body = await response.text()
+      const {
+        'content-encoding': _encoding,
+        'content-length': _length,
+        ...headers
+      } = response.headers()
+
+      if (body.includes('weniger als 1 Sekunde')) {
+        heldRequest = route.request()
+        await localeReleased
+      }
+
+      await route.fulfill({ body, headers, status: response.status() })
+    },
+  )
+
+  return {
+    isHeld: () => heldRequest !== null,
+    release: async () => {
+      const localeLoaded = page.waitForEvent(
+        'requestfinished',
+        (request) => request === heldRequest,
+      )
+
+      releaseLocale()
+      await localeLoaded
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      )
+    },
+  }
+}
 
 describe('Auth', () => {
   let page: Page
@@ -124,6 +170,34 @@ describe('Auth', () => {
       await expect
         .poll(() => page.url(), { timeout: POLL_TOPASS_TIMEOUT })
         .not.toContain('create-first-user')
+    })
+
+    test('should keep typed values when the date-fns locale loads late', async ({ browser }) => {
+      const germanContext = await browser.newContext()
+      const germanPage = await germanContext.newPage()
+      const {
+        admin: {
+          routes: { createFirstUser: createFirstUserRoute },
+        },
+      } = getRoutes({})
+
+      try {
+        await germanContext.addCookies([{ name: 'payload-lng', url: serverURL, value: 'de' }])
+
+        const germanDateFNSLocale = await holdGermanDateFNSLocale(germanPage)
+
+        await germanPage.goto(formatAdminURL({ adminRoute, path: createFirstUserRoute, serverURL }))
+        await expect(germanPage.locator('#field-email')).toBeEnabled()
+        await germanPage.locator('#field-email').fill(devUser.email)
+        await germanPage.locator('#field-password').fill(devUser.password)
+        await expect.poll(germanDateFNSLocale.isHeld).toBe(true)
+        await germanDateFNSLocale.release()
+
+        await expect(germanPage.locator('#field-email')).toHaveValue(devUser.email)
+        await expect(germanPage.locator('#field-password')).toHaveValue(devUser.password)
+      } finally {
+        await germanContext.close()
+      }
     })
 
     test('richText field should should not be readOnly in create first user view', async () => {
