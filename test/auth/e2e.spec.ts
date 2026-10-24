@@ -499,6 +499,44 @@ describe('Auth', () => {
       }
     })
 
+    test('should keep saved nav preferences after logging in on a wide screen', async ({
+      browser,
+    }) => {
+      const wideContext = await browser.newContext({ viewport: { height: 1080, width: 1920 } })
+      const widePage = await wideContext.newPage()
+      const navPreferencesURL = formatAdminURL({
+        apiRoute: '/api',
+        path: '/payload-preferences/nav',
+        serverURL,
+      })
+
+      try {
+        await widePage.request.post(
+          formatAdminURL({ apiRoute: '/api', path: `/${slug}/login`, serverURL }),
+          { data: devUser },
+        )
+        await widePage.request.post(navPreferencesURL, {
+          data: { value: { groups: { Saved: { open: false } } } },
+        })
+        await wideContext.clearCookies()
+        await login({ page: widePage, serverURL })
+
+        const savedToggle = widePage.waitForResponse(
+          (response) =>
+            response.url() === navPreferencesURL && response.request().method() === 'POST',
+        )
+
+        await widePage.locator('.nav-group__toggle').first().click()
+        await savedToggle
+
+        await expect
+          .poll(async () => (await (await widePage.request.get(navPreferencesURL)).json()).value)
+          .toHaveProperty('groups.Saved', { open: false })
+      } finally {
+        await wideContext.close()
+      }
+    })
+
     test('should redirect logged-out requests for admin views to the login view', async ({
       request,
     }) => {
