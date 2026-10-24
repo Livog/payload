@@ -1,4 +1,4 @@
-import type { BrowserContext, Page, Request } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import path from 'path'
@@ -10,7 +10,7 @@ import type { Config } from './payload-types.js'
 
 import { login } from '../__helpers/e2e/auth/login.js'
 import { logout } from '../__helpers/e2e/auth/logout.js'
-import { getRoutes, saveDocAndAssert } from '../__helpers/e2e/helpers.js'
+import { getRoutes, gotoAndWaitForForm, saveDocAndAssert } from '../__helpers/e2e/helpers.js'
 import { openNav } from '../__helpers/e2e/toggleNav.js'
 import { AdminUrlUtil } from '../__helpers/shared/adminUrlUtil.js'
 import { reInitializeDB } from '../__helpers/shared/clearAndSeed/reInitializeDB.js'
@@ -28,52 +28,6 @@ process.env.NEXT_BASE_PATH = BASE_PATH
 let payload: PayloadTestSDK<Config>
 
 const { afterAll, beforeAll, beforeEach, describe } = test
-
-async function holdGermanDateFNSLocale(
-  page: Page,
-): Promise<{ isHeld: () => boolean; release: () => Promise<void> }> {
-  let releaseLocale = () => {}
-  const localeReleased = new Promise<void>((resolve) => {
-    releaseLocale = resolve
-  })
-  let heldRequest: null | Request = null
-
-  await page.route(
-    (url) => url.pathname.endsWith('.js'),
-    async (route) => {
-      const response = await route.fetch()
-      const body = await response.text()
-      const {
-        'content-encoding': _encoding,
-        'content-length': _length,
-        ...headers
-      } = response.headers()
-
-      if (body.includes('weniger als 1 Sekunde')) {
-        heldRequest = route.request()
-        await localeReleased
-      }
-
-      await route.fulfill({ body, headers, status: response.status() })
-    },
-  )
-
-  return {
-    isHeld: () => heldRequest !== null,
-    release: async () => {
-      const localeLoaded = page.waitForEvent(
-        'requestfinished',
-        (request) => request === heldRequest,
-      )
-
-      releaseLocale()
-      await localeLoaded
-      await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-      )
-    },
-  }
-}
 
 describe('Auth', () => {
   let page: Page
@@ -172,32 +126,42 @@ describe('Auth', () => {
         .not.toContain('create-first-user')
     })
 
-    test('should keep typed values when the date-fns locale loads late', async ({ browser }) => {
-      const germanContext = await browser.newContext()
-      const germanPage = await germanContext.newPage()
+    test('should keep values typed before the session check finishes', async ({
+      page: freshPage,
+    }) => {
       const {
         admin: {
           routes: { createFirstUser: createFirstUserRoute },
         },
       } = getRoutes({})
+      let releaseMe = () => {}
+      const meReleased = new Promise<void>((resolve) => {
+        releaseMe = resolve
+      })
 
-      try {
-        await germanContext.addCookies([{ name: 'payload-lng', url: serverURL, value: 'de' }])
+      await freshPage.route(`**/api/${slug}/me`, async (route) => {
+        await meReleased
+        await route.continue()
+      })
+      await gotoAndWaitForForm(
+        freshPage,
+        formatAdminURL({ adminRoute, path: createFirstUserRoute, serverURL }),
+      )
+      await freshPage.locator('#field-email').fill(devUser.email)
+      await freshPage.locator('#field-password').fill(devUser.password)
 
-        const germanDateFNSLocale = await holdGermanDateFNSLocale(germanPage)
+      const meFinished = freshPage.waitForEvent('requestfinished', (request) =>
+        request.url().endsWith(`/api/${slug}/me`),
+      )
 
-        await germanPage.goto(formatAdminURL({ adminRoute, path: createFirstUserRoute, serverURL }))
-        await expect(germanPage.locator('#field-email')).toBeEnabled()
-        await germanPage.locator('#field-email').fill(devUser.email)
-        await germanPage.locator('#field-password').fill(devUser.password)
-        await expect.poll(germanDateFNSLocale.isHeld).toBe(true)
-        await germanDateFNSLocale.release()
+      releaseMe()
+      await meFinished
+      await freshPage.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      )
 
-        await expect(germanPage.locator('#field-email')).toHaveValue(devUser.email)
-        await expect(germanPage.locator('#field-password')).toHaveValue(devUser.password)
-      } finally {
-        await germanContext.close()
-      }
+      await expect(freshPage.locator('#field-email')).toHaveValue(devUser.email)
+      await expect(freshPage.locator('#field-password')).toHaveValue(devUser.password)
     })
 
     test('richText field should should not be readOnly in create first user view', async () => {
@@ -564,41 +528,37 @@ describe('Auth', () => {
     })
 
     test('should keep saved nav preferences after logging in on a wide screen', async ({
-      browser,
+      context: wideContext,
+      page: widePage,
     }) => {
-      const wideContext = await browser.newContext({ viewport: { height: 1080, width: 1920 } })
-      const widePage = await wideContext.newPage()
       const navPreferencesURL = formatAdminURL({
         apiRoute: '/api',
         path: '/payload-preferences/nav',
         serverURL,
       })
 
-      try {
-        await widePage.request.post(
-          formatAdminURL({ apiRoute: '/api', path: `/${slug}/login`, serverURL }),
-          { data: devUser },
-        )
-        await widePage.request.post(navPreferencesURL, {
-          data: { value: { groups: { Saved: { open: false } } } },
-        })
-        await wideContext.clearCookies()
-        await login({ page: widePage, serverURL })
+      await widePage.setViewportSize({ height: 1080, width: 1920 })
+      await widePage.request.post(
+        formatAdminURL({ apiRoute: '/api', path: `/${slug}/login`, serverURL }),
+        { data: devUser },
+      )
+      await widePage.request.post(navPreferencesURL, {
+        data: { value: { groups: { Saved: { open: false } } } },
+      })
+      await wideContext.clearCookies()
+      await login({ page: widePage, serverURL })
 
-        const savedToggle = widePage.waitForResponse(
-          (response) =>
-            response.url() === navPreferencesURL && response.request().method() === 'POST',
-        )
+      const savedToggle = widePage.waitForResponse(
+        (response) =>
+          response.url() === navPreferencesURL && response.request().method() === 'POST',
+      )
 
-        await widePage.locator('.nav-group__toggle').first().click()
-        await savedToggle
+      await widePage.locator('.nav-group__toggle').first().click()
+      await savedToggle
 
-        await expect
-          .poll(async () => (await (await widePage.request.get(navPreferencesURL)).json()).value)
-          .toHaveProperty('groups.Saved', { open: false })
-      } finally {
-        await wideContext.close()
-      }
+      await expect
+        .poll(async () => (await (await widePage.request.get(navPreferencesURL)).json()).value)
+        .toHaveProperty('groups.Saved', { open: false })
     })
 
     test('should redirect logged-out requests for admin views to the login view', async ({

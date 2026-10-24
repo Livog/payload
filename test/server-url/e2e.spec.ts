@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url'
 import type { PayloadTestSDK } from '../__helpers/shared/sdk/index.js'
 import type { Config } from './payload-types.js'
 
+import { assertNetworkRequests } from '../__helpers/e2e/assertNetworkRequests.js'
 import { login } from '../__helpers/e2e/auth/login.js'
 import { logoutViaNav } from '../__helpers/e2e/auth/logout.js'
 import { AdminUrlUtil } from '../__helpers/shared/adminUrlUtil.js'
@@ -71,22 +72,16 @@ test.describe('serverURL', () => {
   })
 
   test('should send a visitor with an invalid session cookie from another site to the login view', async ({
-    browser,
+    context: staleContext,
+    page: stalePage,
   }) => {
-    const staleContext = await browser.newContext()
-    const stalePage = await staleContext.newPage()
+    await staleContext.addCookies([
+      { name: 'payload-token', url: url.serverURL, value: 'invalid-session' },
+    ])
+    await openFromAnotherSite({ href: url.account, page: stalePage })
 
-    try {
-      await staleContext.addCookies([
-        { name: 'payload-token', url: url.serverURL, value: 'invalid-session' },
-      ])
-      await openFromAnotherSite({ href: url.account, page: stalePage })
-
-      await expect(stalePage.locator('#field-email')).toBeVisible()
-      await expect(stalePage).toHaveURL(new RegExp(`^${url.login}\\?redirect=`))
-    } finally {
-      await staleContext.close()
-    }
+    await expect(stalePage.locator('#field-email')).toBeVisible()
+    await expect(stalePage).toHaveURL(new RegExp(`^${url.login}\\?redirect=`))
   })
 
   test('should open an admin link from another site when the first /me request fails', async () => {
@@ -107,23 +102,16 @@ test.describe('serverURL', () => {
       overrideAccess: true,
       where: { email: { equals: email } },
     })
-    await payload.create({
+
+    const { _verificationToken } = await payload.create({
       collection: verifiedUsersSlug,
       data: { email, password: 'test' },
       overrideAccess: true,
-    })
-
-    const {
-      docs: [unverifiedUser],
-    } = await payload.find({
-      collection: verifiedUsersSlug,
-      overrideAccess: true,
       showHiddenFields: true,
-      where: { email: { equals: email } },
     })
 
     await openFromAnotherSite({
-      href: `${url.admin}/${verifiedUsersSlug}/verify/${unverifiedUser?._verificationToken}`,
+      href: `${url.admin}/${verifiedUsersSlug}/verify/${_verificationToken}`,
       page,
     })
 
@@ -133,18 +121,10 @@ test.describe('serverURL', () => {
 
   test('should log out through a logout link from another site', async () => {
     await login({ page, serverURL: url.serverURL })
-
-    let meRequestCount = 0
-
-    await page.route('**/api/users/me', (route) => {
-      meRequestCount += 1
-      return route.continue()
+    await assertNetworkRequests(page, '/api/users/me', async () => {
+      await openFromAnotherSite({ href: url.logout, page })
+      await expect(page.locator('.login')).toBeVisible()
     })
-    await openFromAnotherSite({ href: url.logout, page })
-
-    await expect(page.locator('.login')).toBeVisible()
-    await page.unroute('**/api/users/me')
-    await expect.poll(() => meRequestCount).toBe(1)
     await expect
       .poll(() =>
         page.evaluate(
