@@ -1,12 +1,12 @@
 import type { AdminViewServerProps, ServerProps } from 'payload'
 
-import { getSafeRedirect } from 'payload/shared'
 import React, { Fragment } from 'react'
 
 import { Logo } from '../../elements/Logo/index.js'
 import { RenderServerComponent } from '../../elements/RenderServerComponent/index.js'
 // eslint-disable-next-line payload/no-imports-from-exports-dir -- Server component must reference exports/client bundle for proper client boundary in prod builds
 import { LoginForm } from '../../exports/client/index.js'
+import { getSafeAdminRedirect } from '../../utilities/getSafeAdminRedirect.js'
 import './index.css'
 
 export const loginBaseClass = 'login'
@@ -23,10 +23,14 @@ export function LoginView({ initPageResult, params, searchParams }: AdminViewSer
 
   const {
     admin: { components: { afterLogin, beforeLogin } = {}, user: userSlug },
-    routes: { admin },
+    routes: { admin, api },
   } = config
 
-  const redirectUrl = getSafeRedirect({ fallbackTo: admin, redirectTo: searchParams.redirect })
+  const redirectUrl = getSafeAdminRedirect({
+    adminRoute: admin,
+    apiRoute: api,
+    redirectTo: searchParams.redirect,
+  })
 
   if (user) {
     req.server.redirect(redirectUrl)

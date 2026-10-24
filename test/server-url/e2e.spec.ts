@@ -72,6 +72,24 @@ test.describe('serverURL', () => {
     await expect.poll(() => visitedPaths).not.toContain(new URL(url.login).pathname)
   })
 
+  test('should only redirect to admin pages after a link from another site', async () => {
+    const redirect = `?redirect=${encodeURIComponent('/api/users/me')}`
+    const inactivityURL = formatAdminURL({
+      adminRoute: '/admin',
+      path: '/logout-inactivity',
+      serverURL: url.serverURL,
+    })
+
+    await login({ page, serverURL: url.serverURL })
+
+    for (const href of [`${url.login}${redirect}`, `${inactivityURL}${redirect}`]) {
+      await openFromAnotherSite({ href, page })
+
+      await expect(page.locator('.dashboard')).toBeVisible()
+      await expect(page).toHaveURL(url.admin)
+    }
+  })
+
   test('should send a visitor with an invalid session cookie from another site to the login view', async ({
     context: staleContext,
     page: stalePage,
