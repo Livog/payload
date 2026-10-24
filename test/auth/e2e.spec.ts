@@ -482,6 +482,23 @@ describe('Auth', () => {
       }
     })
 
+    test('should server-render custom providers on the login view', async ({ browser }) => {
+      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
+
+      try {
+        const loggedOutPage = await loggedOutContext.newPage()
+
+        await loggedOutPage.goto(url.login)
+
+        await expect(loggedOutPage.locator('meta[name="custom-provider"]')).toHaveAttribute(
+          'content',
+          'server-rendered',
+        )
+      } finally {
+        await loggedOutContext.close()
+      }
+    })
+
     test('should redirect logged-out requests for admin views to the login view', async ({
       request,
     }) => {
