@@ -25,6 +25,7 @@ import { useAuthSessionTimers } from './useAuthSessionTimers.js'
 export type { AuthContext, AuthSession, UserWithToken } from './types.js'
 
 const Context = createContext({} as AuthContext)
+const SkipRouteRefreshContext = createContext<() => void>(() => {})
 
 type Props = {
   children: React.ReactNode
@@ -86,6 +87,7 @@ export function AuthProvider({
 
   const [authRequests] = useState(createAuthSessionRequests)
   const userRef = React.useRef<AuthenticatedUser | null>(initialUser)
+  const isRouteRefreshSkippedRef = React.useRef(false)
 
   const isAuthenticated = Boolean(user)
 
@@ -494,9 +496,13 @@ export function AuthProvider({
     }
   }, [])
 
+  const skipRouteRefresh = useCallback(() => {
+    isRouteRefreshSkippedRef.current = true
+  }, [])
+
   const refreshIfServerMissedSession = useEffectEvent(() => {
     // the server render misses the session on cross-site links (csrf) and with refresh-only strategies
-    if (!initialUser && !authRequests.isLoggingOut()) {
+    if (!initialUser && !authRequests.isLoggingOut() && !isRouteRefreshSkippedRef.current) {
       router.refresh()
     }
   })
@@ -551,7 +557,13 @@ export function AuthProvider({
     ],
   )
 
-  return <Context value={value}>{children}</Context>
+  return (
+    <Context value={value}>
+      <SkipRouteRefreshContext value={skipRouteRefresh}>{children}</SkipRouteRefreshContext>
+    </Context>
+  )
 }
 
 export const useAuth = <T = AuthenticatedUser,>(): AuthContext<T> => use(Context) as AuthContext<T>
+
+export const useSkipRouteRefresh = (): (() => void) => use(SkipRouteRefreshContext)

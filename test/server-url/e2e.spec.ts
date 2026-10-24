@@ -5,12 +5,16 @@ import * as path from 'path'
 import { formatAdminURL } from 'payload/shared'
 import { fileURLToPath } from 'url'
 
+import type { PayloadTestSDK } from '../__helpers/shared/sdk/index.js'
+import type { Config } from './payload-types.js'
+
 import { login } from '../__helpers/e2e/auth/login.js'
 import { logoutViaNav } from '../__helpers/e2e/auth/logout.js'
 import { AdminUrlUtil } from '../__helpers/shared/adminUrlUtil.js'
 import { initPayloadE2ENoConfig } from '../__helpers/shared/initPayloadE2ENoConfig.js'
 import { initPage } from '../__setup/e2e/initPage.js'
-import { TEST_TIMEOUT_LONG } from '../playwright.config.js'
+import { POLL_TOPASS_TIMEOUT, TEST_TIMEOUT_LONG } from '../playwright.config.js'
+import { verifiedUsersSlug } from './shared.js'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -28,12 +32,14 @@ async function openFromAnotherSite({ href, page }: { href: string; page: Page })
 
 test.describe('serverURL', () => {
   let page: Page
+  let payload: PayloadTestSDK<Config>
   let url: AdminUrlUtil
 
   test.beforeAll(async ({ browser }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT_LONG)
 
-    const { payload, serverURL } = await initPayloadE2ENoConfig({ dirname })
+    let serverURL: string
+    ;({ payload, serverURL } = await initPayloadE2ENoConfig<Config>({ dirname }))
     url = new AdminUrlUtil(serverURL, 'posts')
 
     const context = await browser.newContext()
@@ -67,6 +73,39 @@ test.describe('serverURL', () => {
 
     await expect(page.locator('.payload-settings')).toBeVisible()
     await expect(page).toHaveURL(url.account)
+  })
+
+  test('should keep a successful verification from another site while logged in', async () => {
+    const email = 'verify-from-another-site@payloadcms.com'
+
+    await login({ page, serverURL: url.serverURL })
+    await payload.delete({
+      collection: verifiedUsersSlug,
+      overrideAccess: true,
+      where: { email: { equals: email } },
+    })
+    await payload.create({
+      collection: verifiedUsersSlug,
+      data: { email, password: 'test' },
+      overrideAccess: true,
+    })
+
+    const {
+      docs: [unverifiedUser],
+    } = await payload.find({
+      collection: verifiedUsersSlug,
+      overrideAccess: true,
+      showHiddenFields: true,
+      where: { email: { equals: email } },
+    })
+
+    await openFromAnotherSite({
+      href: `${url.admin}/${verifiedUsersSlug}/verify/${unverifiedUser?._verificationToken}`,
+      page,
+    })
+
+    await expect(page.locator('.verify__content')).toBeVisible()
+    await expect(page).not.toHaveURL(/\/verify\//, { timeout: POLL_TOPASS_TIMEOUT })
   })
 
   test('should log out through a logout link from another site', async () => {

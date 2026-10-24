@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { Link } from '../../elements/Link/index.js'
 import { Translation } from '../../elements/Translation/index.js'
+import { useSkipRouteRefresh } from '../../providers/Auth/index.js'
 import { useRouter } from '../../providers/RouterAdapter/index.js'
 import { useRouteTransition } from '../../providers/RouteTransition/index.js'
 import { useTranslation } from '../../providers/Translation/index.js'
@@ -46,6 +47,12 @@ export function VerifyClient({ loginRoute }: { loginRoute: string }) {
   const router = useRouter()
   const { startRouteTransition } = useRouteTransition()
   const { t } = useTranslation()
+  const skipRouteRefresh = useSkipRouteRefresh()
+
+  useEffect(() => {
+    // this render used the one-time token, so a refreshed render would report it invalid
+    skipRouteRefresh()
+  }, [skipRouteRefresh])
 
   useEffect(() => {
     const timeoutID = setTimeout(() => {
