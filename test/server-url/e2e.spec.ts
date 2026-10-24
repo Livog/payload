@@ -27,8 +27,9 @@ async function openFromAnotherSite({ href, page }: { href: string; page: Page })
     route.fulfill({ body: `<a href="${href}">Open admin</a>`, contentType: 'text/html' }),
   )
   await page.goto(ANOTHER_SITE_URL)
-  await page.getByRole('link', { name: 'Open admin' }).click()
+  // Unrouting while the admin page loads strands its intercepted script requests
   await page.unroute(ANOTHER_SITE_URL)
+  await page.getByRole('link', { name: 'Open admin' }).click()
 }
 
 test.describe('serverURL', () => {
