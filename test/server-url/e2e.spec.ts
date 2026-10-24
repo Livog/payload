@@ -60,11 +60,29 @@ test.describe('serverURL', () => {
     await expect(page).toHaveURL(url.account)
   })
 
+  test('should open an admin link from another site when the first /me request fails', async () => {
+    await login({ page, serverURL: url.serverURL })
+    await page.route('**/api/users/me', (route) => route.fulfill({ status: 500 }), { times: 1 })
+    await openFromAnotherSite({ href: url.account, page })
+
+    await expect(page.locator('.payload-settings')).toBeVisible()
+    await expect(page).toHaveURL(url.account)
+  })
+
   test('should log out through a logout link from another site', async () => {
     await login({ page, serverURL: url.serverURL })
+
+    let meRequestCount = 0
+
+    await page.route('**/api/users/me', (route) => {
+      meRequestCount += 1
+      return route.continue()
+    })
     await openFromAnotherSite({ href: url.logout, page })
 
     await expect(page.locator('.login')).toBeVisible()
+    await page.unroute('**/api/users/me')
+    await expect.poll(() => meRequestCount).toBe(1)
     await expect
       .poll(() =>
         page.evaluate(

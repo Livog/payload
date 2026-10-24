@@ -41,7 +41,7 @@ export const LogoutClient: React.FC<{
 }> = (props) => {
   const { adminRoute, inactivity, redirect, user: serverUser } = props
 
-  const { fetchFullUser, logOut, user: clientUser } = useAuth()
+  const { isSessionChecked, logOut, user: clientUser } = useAuth()
 
   // Prefer the client user when present (covers token refresh / inactivity),
   // but fall back to the server-resolved user so the logout still fires when
@@ -55,10 +55,6 @@ export const LogoutClient: React.FC<{
   }, [logoutUser?.id])
 
   const navigatingToLoginRef = React.useRef(false)
-
-  const [isSessionChecked, setIsSessionChecked] = React.useState(
-    () => isLoggedIn || Boolean(inactivity),
-  )
 
   const [loginRoute] = React.useState(() =>
     formatAdminURL({
@@ -85,31 +81,9 @@ export const LogoutClient: React.FC<{
   }, [logOut, loginRoute, router, startRouteTransition, t])
 
   useEffect(() => {
-    if (isSessionChecked) {
-      return
-    }
-
-    let isCurrent = true
-
-    void fetchFullUser().then(() => {
-      if (isCurrent) {
-        setIsSessionChecked(true)
-      }
-    })
-
-    return () => {
-      isCurrent = false
-    }
-  }, [fetchFullUser, isSessionChecked])
-
-  useEffect(() => {
-    if (!isSessionChecked) {
-      return
-    }
-
     if (isLoggedIn && !inactivity) {
       void handleLogOut()
-    } else if (!inactivity && !navigatingToLoginRef.current) {
+    } else if (!inactivity && isSessionChecked && !navigatingToLoginRef.current) {
       navigatingToLoginRef.current = true
       void startRouteTransition(() => router.push(loginRoute))
     }

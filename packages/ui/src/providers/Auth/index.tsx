@@ -82,6 +82,7 @@ export function AuthProvider({
   const [tokenInMemory, setTokenInMemory] = useState<string>()
   const [authSession, setAuthSession] = useState<AuthSession>()
   const [permissions, setPermissions] = useState<SanitizedPermissions>(initialPermissions)
+  const [sessionCheckStatus, setSessionCheckStatus] = useState<FetchFullUserResult['status']>()
 
   const [authRequests] = useState(createAuthSessionRequests)
   const userRef = React.useRef<AuthenticatedUser | null>(initialUser)
@@ -477,19 +478,34 @@ export function AuthProvider({
   }, [fetchFullUserResult])
 
   const fetchFullUserEvent = useEffectEvent(fetchFullUser)
+  const fetchFullUserResultEvent = useEffectEvent(fetchFullUserResult)
 
-  const fetchUserOnMount = useEffectEvent(async () => {
-    const fetchedUser = await fetchFullUser()
+  useEffect(() => {
+    let isCurrent = true
 
-    // /me can find a session the server render missed (csrf on cross-site links, refresh-only strategies)
-    if (fetchedUser && !initialUser) {
+    void fetchFullUserResultEvent().then(({ status }) => {
+      if (isCurrent) {
+        setSessionCheckStatus(status)
+      }
+    })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  const refreshIfServerMissedSession = useEffectEvent(() => {
+    // the server render misses the session on cross-site links (csrf) and with refresh-only strategies
+    if (!initialUser && !authRequests.isLoggingOut()) {
       router.refresh()
     }
   })
 
   useEffect(() => {
-    void fetchUserOnMount()
-  }, [])
+    if (sessionCheckStatus && sessionCheckStatus !== 'unauthenticated') {
+      refreshIfServerMissedSession()
+    }
+  }, [sessionCheckStatus])
 
   useEffect(() => {
     if (!user && autoLogin && !autoLogin.prefillOnly) {
@@ -509,6 +525,7 @@ export function AuthProvider({
     () => ({
       authSession,
       fetchFullUser,
+      isSessionChecked: sessionCheckStatus !== undefined,
       logOut,
       permissions,
       refreshCookie: sessionTimers.scheduleRefresh,
@@ -526,6 +543,7 @@ export function AuthProvider({
       permissions,
       refreshCookieAsync,
       refreshPermissions,
+      sessionCheckStatus,
       sessionTimers.scheduleRefresh,
       setUser,
       tokenInMemory,

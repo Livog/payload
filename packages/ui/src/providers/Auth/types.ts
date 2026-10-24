@@ -21,6 +21,7 @@ export type AuthContext<T = AuthenticatedUser> = {
   /** Lifecycle state for the current auth session. */
   authSession?: AuthSession
   fetchFullUser: () => Promise<null | T>
+  isSessionChecked: boolean
   logOut: () => Promise<boolean>
   /**
    * These are the permissions for the current user from a global scope.
