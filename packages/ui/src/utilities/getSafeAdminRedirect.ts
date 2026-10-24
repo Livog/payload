@@ -9,12 +9,17 @@ export const getSafeAdminRedirect = ({
   apiRoute: string
   redirectTo: string | string[]
 }): string => {
-  const redirect = getSafeRedirect({ fallbackTo: adminRoute, redirectTo })
+  const url = new URL(getSafeRedirect({ fallbackTo: adminRoute, redirectTo }), 'http://localhost')
+
+  // encoded dot, slash, backslash or percent sign
+  if (/%(?:2e|2f|5c|25)/i.test(url.pathname)) {
+    return adminRoute
+  }
 
   let pathname: string
 
   try {
-    pathname = decodeURI(new URL(redirect, 'http://localhost').pathname)
+    pathname = decodeURI(url.pathname)
   } catch {
     return adminRoute
   }
@@ -22,5 +27,10 @@ export const getSafeAdminRedirect = ({
   const isUnder = (route: string) =>
     route === '/' || pathname === route || pathname.startsWith(`${route}/`)
 
-  return isUnder(adminRoute) && !isUnder(apiRoute) ? redirect : adminRoute
+  return isUnder(adminRoute) && !isUnder(apiRoute)
+    ? getSafeRedirect({
+        fallbackTo: adminRoute,
+        redirectTo: `${url.pathname}${url.search}${url.hash}`,
+      })
+    : adminRoute
 }

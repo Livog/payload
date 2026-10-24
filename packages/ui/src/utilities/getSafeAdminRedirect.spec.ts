@@ -26,6 +26,24 @@ describe('getSafeAdminRedirect', () => {
     expect(getSafeAdminRedirect({ ...routes, redirectTo: '/admin/%E0%A4%A' })).toBe('/admin')
   })
 
+  it('should reject encoded separators that a server could decode later', () => {
+    expect(getSafeAdminRedirect({ ...routes, redirectTo: '/admin/..%2fapi/users/me' })).toBe(
+      '/admin',
+    )
+    expect(getSafeAdminRedirect({ ...routes, redirectTo: '/admin/..%5capi/users/me' })).toBe(
+      '/admin',
+    )
+    expect(getSafeAdminRedirect({ ...routes, redirectTo: '/admin/%252e%252e/api/users/me' })).toBe(
+      '/admin',
+    )
+  })
+
+  it('should redirect to the normalized path it checked', () => {
+    expect(
+      getSafeAdminRedirect({ ...routes, redirectTo: '/admin/collections/../account?x=1' }),
+    ).toBe('/admin/account?x=1')
+  })
+
   it('should keep the existing checks for other origins', () => {
     expect(getSafeAdminRedirect({ ...routes, redirectTo: '//example.com/admin' })).toBe('/admin')
     expect(getSafeAdminRedirect({ ...routes, redirectTo: 'https://example.com/admin' })).toBe(
@@ -40,5 +58,7 @@ describe('getSafeAdminRedirect', () => {
       '/collections/posts',
     )
     expect(getSafeAdminRedirect({ ...rootRoutes, redirectTo: '/api/payload-jobs/run' })).toBe('/')
+    expect(getSafeAdminRedirect({ ...rootRoutes, redirectTo: '/x/..//evil.com' })).toBe('/')
+    expect(getSafeAdminRedirect({ ...rootRoutes, redirectTo: '/..//evil.com' })).toBe('/')
   })
 })
