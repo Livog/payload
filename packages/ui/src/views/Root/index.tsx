@@ -183,7 +183,6 @@ export const renderRoot = async ({
       user: req.user,
     })
 
-    // csrf drops the session cookie on links from other sites, so /me decides instead of a login flash
     if (
       !req.user &&
       payload.config.csrf.length > 0 &&

@@ -500,7 +500,6 @@ export function AuthProvider({
   }, [])
 
   const refreshIfServerMissedSession = useEffectEvent(() => {
-    // the server render misses the session on cross-site links (csrf) and with refresh-only strategies
     if (!initialUser && !authRequests.isLoggingOut() && !isRouteRefreshSkippedRef.current) {
       router.refresh()
     }
