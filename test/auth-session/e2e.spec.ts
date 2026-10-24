@@ -4,8 +4,9 @@ import { fileURLToPath } from 'url'
 
 import type { SessionScenario } from './sessionScenario.js'
 
-import { ensureCompilationIsDone } from '../__helpers/e2e/helpers.js'
+import { AdminUrlUtil } from '../__helpers/shared/adminUrlUtil.js'
 import { initPayloadE2ENoConfig } from '../__helpers/shared/initPayloadE2ENoConfig.js'
+import { ensureCompilationIsDone } from '../__setup/e2e/ensureCompilationIsDone.js'
 import { createSessionScenario } from './sessionScenario.js'
 import {
   AUTH_SESSION_REFRESH_BARRIER_PHASES,
@@ -13,6 +14,7 @@ import {
   authSessionAccessTokenLifetimeMs,
   authSessionActivitySelector,
   authSessionRefreshWindowSelector,
+  authSessionUsersSlug,
 } from './shared.js'
 
 const filename = fileURLToPath(import.meta.url)
@@ -197,6 +199,28 @@ test.describe('Auth session', () => {
 
     await test.step('Storage fallback transport', async () => {
       await expectTerminalLogoutToRevokeOAuthCredentials({ scenario })
+    })
+  })
+
+  test('should load admin views and log out after the access token expires', async () => {
+    const url = new AdminUrlUtil(serverURL, authSessionUsersSlug)
+    const page = await scenario.login()
+
+    await test.step('a protected view', async () => {
+      await page.goto('about:blank')
+      await scenario.advanceBy(authSessionAccessTokenLifetimeMs + 1)
+      await page.goto(url.admin)
+
+      await expect(page).toHaveURL(url.admin)
+      await scenario.expectLoggedIn(page)
+    })
+
+    await test.step('the logout route', async () => {
+      await page.goto('about:blank')
+      await scenario.advanceBy(authSessionAccessTokenLifetimeMs + 1)
+      await page.goto(url.logout)
+
+      await scenario.expectLoggedOut({ page, route: 'login' })
     })
   })
 
