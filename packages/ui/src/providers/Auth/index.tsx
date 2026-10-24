@@ -526,7 +526,6 @@ export function AuthProvider({
     [authRequests],
   )
 
-  // React Compiler skips this component, and a new value per render resets forms mounted before /me
   const value = useMemo(
     () => ({
       authSession,
