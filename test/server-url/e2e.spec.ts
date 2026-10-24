@@ -59,11 +59,34 @@ test.describe('serverURL', () => {
   })
 
   test('should open an admin link from another site while logged in', async () => {
+    const visitedPaths: string[] = []
+
     await login({ page, serverURL: url.serverURL })
+    page.on('framenavigated', (frame) => visitedPaths.push(new URL(frame.url()).pathname))
     await openFromAnotherSite({ href: url.account, page })
 
     await expect(page.locator('.payload-settings')).toBeVisible()
     await expect(page).toHaveURL(url.account)
+    await expect.poll(() => visitedPaths).not.toContain(new URL(url.login).pathname)
+  })
+
+  test('should send a visitor with an invalid session cookie from another site to the login view', async ({
+    browser,
+  }) => {
+    const staleContext = await browser.newContext()
+    const stalePage = await staleContext.newPage()
+
+    try {
+      await staleContext.addCookies([
+        { name: 'payload-token', url: url.serverURL, value: 'invalid-session' },
+      ])
+      await openFromAnotherSite({ href: url.account, page: stalePage })
+
+      await expect(stalePage.locator('#field-email')).toBeVisible()
+      await expect(stalePage).toHaveURL(new RegExp(`^${url.login}\\?redirect=`))
+    } finally {
+      await staleContext.close()
+    }
   })
 
   test('should open an admin link from another site when the first /me request fails', async () => {
