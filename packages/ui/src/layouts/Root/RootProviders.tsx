@@ -137,7 +137,6 @@ export const RootProviders: React.FC<RootProviderProps> = ({
                                   <ModalContainer />
                                   <StayLoggedInModal />
                                 </AuthProvider>
-                                {/* AuthProvider can unmount its children during logout; keep pending toasts alive. */}
                                 <ToastContainer config={config} />
                               </DrawerStackProvider>
                             </ModalFocusProvider>

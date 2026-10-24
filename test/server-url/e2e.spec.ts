@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import * as path from 'path'
+import { formatAdminURL } from 'payload/shared'
 import { fileURLToPath } from 'url'
 
 import { login } from '../__helpers/e2e/auth/login.js'
@@ -13,6 +14,17 @@ import { TEST_TIMEOUT_LONG } from '../playwright.config.js'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
+
+const ANOTHER_SITE_URL = 'http://another-site.test/'
+
+async function openFromAnotherSite({ href, page }: { href: string; page: Page }): Promise<void> {
+  await page.route(ANOTHER_SITE_URL, (route) =>
+    route.fulfill({ body: `<a href="${href}">Open admin</a>`, contentType: 'text/html' }),
+  )
+  await page.goto(ANOTHER_SITE_URL)
+  await page.getByRole('link', { name: 'Open admin' }).click()
+  await page.unroute(ANOTHER_SITE_URL)
+}
 
 test.describe('serverURL', () => {
   let page: Page
@@ -38,5 +50,28 @@ test.describe('serverURL', () => {
     await page.goto(url.admin)
     await logoutViaNav(page)
     await expect(page.locator('.login')).toBeVisible()
+  })
+
+  test('should open an admin link from another site while logged in', async () => {
+    await login({ page, serverURL: url.serverURL })
+    await openFromAnotherSite({ href: url.account, page })
+
+    await expect(page.locator('.payload-settings')).toBeVisible()
+    await expect(page).toHaveURL(url.account)
+  })
+
+  test('should log out through a logout link from another site', async () => {
+    await login({ page, serverURL: url.serverURL })
+    await openFromAnotherSite({ href: url.logout, page })
+
+    await expect(page.locator('.login')).toBeVisible()
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async (meURL) => (await (await fetch(meURL)).json()).user,
+          formatAdminURL({ apiRoute: '/api', path: '/users/me', serverURL: url.serverURL }),
+        ),
+      )
+      .toBeNull()
   })
 })

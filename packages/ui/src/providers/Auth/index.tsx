@@ -4,7 +4,7 @@ import type { AuthenticatedUser, SanitizedPermissions } from 'payload'
 import { useModal } from '@faceless-ui/modal'
 import { formatAdminURL } from 'payload/shared'
 import * as qs from 'qs-esm'
-import React, { createContext, use, useCallback, useEffect, useState } from 'react'
+import React, { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { TabSessionReconciliationOptions } from './tabSessionSync/index.js'
@@ -82,7 +82,6 @@ export function AuthProvider({
   const [tokenInMemory, setTokenInMemory] = useState<string>()
   const [authSession, setAuthSession] = useState<AuthSession>()
   const [permissions, setPermissions] = useState<SanitizedPermissions>(initialPermissions)
-  const [fetchedUserOnMount, setFetchedUserOnMount] = useState(false)
 
   const [authRequests] = useState(createAuthSessionRequests)
   const userRef = React.useRef<AuthenticatedUser | null>(initialUser)
@@ -403,7 +402,7 @@ export function AuthProvider({
         toast.error(`Refreshing permissions failed: ${e.message}`)
       }
     },
-    [apiRoute, i18n],
+    [apiRoute, i18n.language],
   )
 
   const fetchFullUserResult = React.useCallback(
@@ -479,12 +478,16 @@ export function AuthProvider({
 
   const fetchFullUserEvent = useEffectEvent(fetchFullUser)
 
-  useEffect(() => {
-    async function fetchUserOnMount() {
-      await fetchFullUserEvent()
-      setFetchedUserOnMount(true)
-    }
+  const fetchUserOnMount = useEffectEvent(async () => {
+    const fetchedUser = await fetchFullUser()
 
+    // /me can find a session the server render missed (csrf on cross-site links, refresh-only strategies)
+    if (fetchedUser && !initialUser) {
+      router.refresh()
+    }
+  })
+
+  useEffect(() => {
     void fetchUserOnMount()
   }, [])
 
@@ -501,29 +504,36 @@ export function AuthProvider({
     [authRequests],
   )
 
-  if (!user && !fetchedUserOnMount) {
-    return null
-  }
-
-  return (
-    <Context
-      value={{
-        authSession,
-        fetchFullUser,
-        logOut,
-        permissions,
-        refreshCookie: sessionTimers.scheduleRefresh,
-        refreshCookieAsync,
-        refreshPermissions,
-        setPermissions,
-        setUser,
-        token: tokenInMemory,
-        user,
-      }}
-    >
-      {children}
-    </Context>
+  // React Compiler skips this component, and a new value per render resets forms mounted before /me
+  const value = useMemo(
+    () => ({
+      authSession,
+      fetchFullUser,
+      logOut,
+      permissions,
+      refreshCookie: sessionTimers.scheduleRefresh,
+      refreshCookieAsync,
+      refreshPermissions,
+      setPermissions,
+      setUser,
+      token: tokenInMemory,
+      user,
+    }),
+    [
+      authSession,
+      fetchFullUser,
+      logOut,
+      permissions,
+      refreshCookieAsync,
+      refreshPermissions,
+      sessionTimers.scheduleRefresh,
+      setUser,
+      tokenInMemory,
+      user,
+    ],
   )
+
+  return <Context value={value}>{children}</Context>
 }
 
 export const useAuth = <T = AuthenticatedUser,>(): AuthContext<T> => use(Context) as AuthContext<T>

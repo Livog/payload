@@ -458,6 +458,63 @@ describe('Auth', () => {
     })
   })
 
+  describe('logged out', () => {
+    beforeAll(async () => {
+      await reInitializeDB({
+        deleteOnly: false,
+        serverURL,
+      })
+    })
+
+    test('should render the login view without client JavaScript', async ({ browser }) => {
+      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
+
+      try {
+        const loggedOutPage = await loggedOutContext.newPage()
+
+        await loggedOutPage.goto(url.login)
+
+        await expect(loggedOutPage.locator('#field-email')).toBeVisible()
+        await expect(loggedOutPage.locator('#field-password')).toBeVisible()
+        await expect(loggedOutPage.locator('.form-submit button')).toBeVisible()
+      } finally {
+        await loggedOutContext.close()
+      }
+    })
+
+    test('should server-render custom providers on the login view', async ({ browser }) => {
+      const loggedOutContext = await browser.newContext({ javaScriptEnabled: false })
+
+      try {
+        const loggedOutPage = await loggedOutContext.newPage()
+
+        await loggedOutPage.goto(url.login)
+
+        await expect(loggedOutPage.locator('meta[name="custom-provider"]')).toHaveAttribute(
+          'content',
+          'server-rendered',
+        )
+      } finally {
+        await loggedOutContext.close()
+      }
+    })
+
+    test('should redirect logged-out requests for admin views to the login view', async ({
+      request,
+    }) => {
+      await expect
+        .poll(async () => {
+          const response = await request.get(url.admin, { maxRedirects: 0 })
+
+          return {
+            location: new URL(response.headers().location ?? '', serverURL).pathname,
+            status: response.status(),
+          }
+        })
+        .toEqual({ location: new URL(url.login).pathname, status: 307 })
+    })
+  })
+
   describe('server functions', () => {
     const serverFunctionsPath = '/server-functions'
 
